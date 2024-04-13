@@ -59,13 +59,22 @@ fn setup_hud(
     mut commands: Commands,
 ) {
     commands.spawn((
-        TextBundle::from_section(
-            "Mana: X",
-            TextStyle {
-                font_size: 32.0,
-                ..default()
-            },
-        )
+        TextBundle::from_sections([
+            TextSection::new(
+                "Mana: ",
+                TextStyle {
+                    font_size: 32.0,
+                    ..default()
+                },
+            ),
+            TextSection::new(
+                "",
+                TextStyle {
+                    font_size: 32.0,
+                    ..default()   
+                },
+            )
+        ])
         .with_style(Style {
             position_type: PositionType::Absolute,
             top: Val::Px(5.0),
@@ -211,17 +220,18 @@ fn demon_lifespan(
 
 fn wizard_mana_replenish(
     time: Res<Time>,
-    mut query: Query<(&mut Wizard), With<Wizard>>,
-    mut text_query: Query<&mut Text, With<ManaText>>,
+    mut set: ParamSet<(
+        Query<(&mut Wizard), With<Wizard>>,
+        Query<&mut Text, With<ManaText>>,
+    )>,
 ) {
-    let mut text = text_query.single_mut();
-    for mut wizard in query.iter_mut() {
-        wizard.mana += MANA_REPLENISH_RATE * time.delta_seconds();
-        if wizard.mana > MAX_MANA {
-            wizard.mana = MAX_MANA;
-        }
-
+    let mut wizard = set.p0().single_mut();
+    wizard.mana += MANA_REPLENISH_RATE * time.delta_seconds();
+    if wizard.mana > MAX_MANA {
+        wizard.mana = MAX_MANA;
     }
+    let mut text = set.p1().single_mut();
+    text.sections[1].value = format!("{wizard.mana:.0}");
 }
 
 fn keyboard_input_system(
