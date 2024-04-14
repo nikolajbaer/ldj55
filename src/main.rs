@@ -261,7 +261,8 @@ fn demon_lifespan(
 fn wizard_vitals(
     time: Res<Time>,
     mut wizard_query: Query<&mut Wizard, With<Wizard>>,
-    mut text_query: Query<&mut Text, With<ManaText>>,
+    mut mana_text_query: Query<&mut Text, With<ManaText>>,
+    mut health_text_query: Query<&mut Text, With<HealthText>>,
 ) {
     let mut wizard = wizard_query.single_mut();
     wizard.mana += MANA_REPLENISH_RATE * time.delta_seconds();
@@ -272,9 +273,12 @@ fn wizard_vitals(
         println!("You died!");
         wizard.gameover = true;
     }
-    let value = wizard.mana;
-    let mut text = text_query.single_mut();
-    text.sections[1].value = format!("{value:.0}");
+    let mana = wizard.mana;
+    let health = wizard.health;
+    let mut text = mana_text_query.single_mut();
+    text.sections[1].value = format!("{mana:.0}");
+    let mut text = health_text_query.single_mut();
+    text.sections[1].value = format!("{health:.0}");
 }
 
 fn wizard_move(
