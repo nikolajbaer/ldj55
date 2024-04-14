@@ -7,12 +7,15 @@ use std::time::Duration;
 const MAX_MANA:f32 = 10.0;
 const ATTACK_MANA:f32 = 1.0;
 const ATTACK_STRENGTH:f32 = 5.0;
+const ATTACK_RANGE:f32 = 3.0;
 const GOBLIN_ATTACK_TIME:f32 = 3.0;
 const MANA_REPLENISH_RATE:f32 = 1.0;
 const GOBLIN_ATTACK_DISTANCE:f32 = 2.0;
 const MAX_DEMON_SCARE:f32 = 5.0;
 const MAX_HEALTH:f32 = 30.0;
-const WIZARD_ATTACK_TIMER:f32 = 2.0;
+const WIZARD_ATTACK_TIMER:f32 = 1.0;
+const DEMON_ATTACK_STRENGTH:f32 = 10.0;
+const DEMON_ATTACK_RANGE:f32 = 5.0;
 
 #[derive(Component)]
 struct Wizard {
@@ -47,6 +50,9 @@ struct ManaText;
 
 #[derive(Component)]
 struct HealthText;
+
+#[derive(Resource)]
+struct WizardAnimations(Vec<Handle<AnimationClip>>);
 
 fn main() {
     App::new()
@@ -172,7 +178,7 @@ fn setup(
         .insert(KinematicCharacterController::default());
 
     commands.insert_resource(SpawnGoblinsConfig {
-        timer: Timer::new(Duration::from_secs(8), TimerMode::Repeating),
+        timer: Timer::new(Duration::from_secs(5), TimerMode::Repeating),
     });
 
     commands.spawn((
@@ -182,6 +188,11 @@ fn setup(
         },
         ThemeMusic,
     ));
+   
+    commands.insert_resource(WizardAnimations(vec![
+        asset_server.load("wizard.glb#Animation1"),
+        asset_server.load("wizard.glb#Animation0"),
+    ]));
 }
 
 fn goblin_spawner(
@@ -192,7 +203,7 @@ fn goblin_spawner(
     mut config: ResMut<SpawnGoblinsConfig>,
 ){
     config.timer.tick(time.delta());
-    let level = (time.elapsed().as_secs() / 30) + 1;
+    let level = (time.elapsed().as_secs() / 30) + 2;
     if config.timer.just_finished() {
         println!("Spawning level {}",level);
         // Spawn some goblins
@@ -223,8 +234,10 @@ fn demon_summoner(
     mut commands: Commands,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut query: Query<(&Transform,&mut Wizard)>,
+    mut goblin_query: Query<&mut Goblin, With<Goblin>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    rapier_context: Res<RapierContext>,
 ) {
     let (transform,mut wizard) = query.single_mut();
     if wizard.mana < MAX_MANA { 
@@ -242,6 +255,21 @@ fn demon_summoner(
             .insert(RigidBody::KinematicPositionBased)
             .insert(Collider::ball(1.0));
         wizard.mana = 0.0; 
+
+        // And let the demon smite the nearby goblins
+        let shape = Collider::ball(DEMON_ATTACK_RANGE);
+        let shape_pos = Vec2::new(summon_location.x,summon_location.y);
+        let shape_rot = 0.0;
+        let filter = QueryFilter::default();
+        rapier_context.intersections_with_shape(
+            shape_pos, shape_rot, &shape, filter, |entity| {
+            if let Ok(mut goblin) = goblin_query.get_mut(entity) {
+                goblin.health -= DEMON_ATTACK_STRENGTH;
+            }
+            return true;
+        });
+
+
     }
 }
 
@@ -261,8 +289,8 @@ fn demon_lifespan(
 fn wizard_vitals(
     time: Res<Time>,
     mut wizard_query: Query<&mut Wizard, With<Wizard>>,
-    mut mana_text_query: Query<&mut Text, With<ManaText>>,
-    mut health_text_query: Query<&mut Text, With<HealthText>>,
+    mut mana_text_query: Query<&mut Text, (With<ManaText>,Without<HealthText>)>,
+    mut health_text_query: Query<&mut Text, (With<HealthText>, Without<ManaText>)>,
 ) {
     let mut wizard = wizard_query.single_mut();
     wizard.mana += MANA_REPLENISH_RATE * time.delta_seconds();
@@ -310,6 +338,8 @@ fn wizard_attack(
     mut query: Query<(&Transform, &mut Wizard), With<Wizard>>,
     mut goblin_query: Query<&mut Goblin, With<Goblin>>,
     rapier_context: Res<RapierContext>,
+    mut animation_players: Query<&mut AnimationPlayer>,
+    animations: Res<WizardAnimations>,
 ) {
     let (transform, mut wizard) = query.single_mut();
     if wizard.attack_timer > 0.0 {
@@ -324,7 +354,7 @@ fn wizard_attack(
         println!("Wizard Attack!");
         
         // Select goblins to strike
-        let shape = Collider::ball(3.0);
+        let shape = Collider::ball(ATTACK_RANGE);
         let shape_pos = Vec2::new(transform.translation.x,transform.translation.y);
         let shape_rot = 0.0;
 
@@ -340,6 +370,19 @@ fn wizard_attack(
 
         wizard.mana -= ATTACK_MANA;
         wizard.attack_timer = WIZARD_ATTACK_TIMER;
+
+        if !animation_players.is_empty() {
+            println!("Playing wizard attack animation");
+            let mut player = animation_players.single_mut();
+            let clip = animations.0[1].clone_weak();
+            player.replay();
+            player.play(clip);
+        } else {
+            println!("No animation players!");
+        }
+
+    } else if mouse_button_input.pressed(MouseButton::Right) {
+        // TODO Attack 2 (flame dartish things)
     }
 }
 
